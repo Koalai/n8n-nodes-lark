@@ -4,7 +4,7 @@ import {
 } from 'n8n-workflow';
 
 export class LarkAppApi implements ICredentialType { 
-    name = 'LarkAppApi';
+    name = 'larkAppApi';
     displayName = 'Lark App API';
     documentationUrl = 'https://open.larksuite.com/document/home'
     properties: INodeProperties[] = [

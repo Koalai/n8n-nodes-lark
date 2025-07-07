@@ -10,7 +10,7 @@ export class LarkAuthentication implements INodeType {
     description: INodeTypeDescription = {
         displayName: 'Lark Authentication',
         name: 'larkAuthentication',
-        icon: 'file:logo.png',
+        icon: 'file:logo.svg',
         group: ['applications'],
         version: 1,
         description: 'Obtain tenant_access_token from Lark Open Platform.',
@@ -21,7 +21,7 @@ export class LarkAuthentication implements INodeType {
         outputs: [NodeConnectionType.Main],
         credentials: [
             {
-                name: 'LarkAppApi',
+                name: 'larkAppApi',
                 required: true,
             },
         ],
@@ -31,7 +31,7 @@ export class LarkAuthentication implements INodeType {
     async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
         const returnData: INodeExecutionData[] = [];
 
-        const credentials = await this.getCredentials('LarkAppApi') as {
+        const credentials = await this.getCredentials('larkAppApi') as {
             app_id: string;
             app_secret: string;
         };
