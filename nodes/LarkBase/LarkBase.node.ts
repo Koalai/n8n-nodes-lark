@@ -1,17 +1,16 @@
 import {
-    INodeType,
-    INodeTypeDescription,
     IExecuteFunctions,
     INodeExecutionData,
-    NodeConnectionType,
-    INodeProperties, // Make sure INodeProperties is imported for the new properties
+    INodeType,
+    INodeTypeDescription,
+    NodeConnectionType
 } from 'n8n-workflow';
 
 export class LarkBase implements INodeType {
     description: INodeTypeDescription = {
         displayName: 'Lark Base',
         name: 'larkBase',
-        icon: 'file:logo.svg', 
+        icon: 'file:logo.svg',
         group: ['applications'],
         version: 1,
         description: 'Interact with Lark Base API to manage records',
@@ -112,7 +111,7 @@ export class LarkBase implements INodeType {
             const currentItem = items[itemIndex];
             let responseData;
 
-            const tenantAccessToken = currentItem.json.tenantAccessToken
+            const tenantAccessToken = currentItem.json.tenantAccessToken;
             if (!tenantAccessToken) {
                 throw new Error('Tenant Access Token not found in input data. Please connect a "Lark Authentication" node before this node.');
             }
@@ -135,24 +134,26 @@ export class LarkBase implements INodeType {
                     if (response.code === 0 && response.data) {
                         responseData = response.data;
                     } else {
-                        throw new Error(`Failed to get records: ${response.msg || 'Unknown error'}`);
+                        throw new Error(`Failed to get records: ${response.msg || 'Unknown error'}. Details: ${JSON.stringify(response)}`);
                     }
                 } else if (operation === 'createRecord') {
-                    const fieldsJson = this.getNodeParameter('fields', itemIndex) as string;
-                    let fields: object;
+                    const fields = this.getNodeParameter('fields', itemIndex) as string;
 
+                    let fieldsObj;
                     try {
-                        fields = JSON.parse(fieldsJson);
-                    } catch (e: any) {
-                        throw new Error(`Invalid JSON for "Fields": ${e.message}. Please ensure it is a valid JSON object.`);
+                        fieldsObj = JSON.parse(fields);
+
+                        if (!fieldsObj.fields && typeof fieldsObj === 'object') {
+                            fieldsObj = { fields: fieldsObj };
+                        }
+                    } catch (error) {
+                        throw new Error('Fields must be valid JSON format');
                     }
 
                     const response = await this.helpers.httpRequest({
                         method: 'POST',
                         url: `https://open.larksuite.com/open-apis/bitable/v1/apps/${credentials.app_token}/tables/${credentials.table_id}/records`,
-                        body: {
-                            fields: fields,
-                        },
+                        body: fieldsObj,
                         json: true,
                         headers: {
                             'Authorization': `Bearer ${tenantAccessToken}`,
@@ -164,25 +165,31 @@ export class LarkBase implements INodeType {
                     if (response.code === 0 && response.data) {
                         responseData = response.data;
                     } else {
-                        throw new Error(`Failed to create record: ${response.msg || 'Unknown error'}`);
+                        throw new Error(`Failed to create record: ${response.msg || 'Unknown error'}. Details: ${JSON.stringify(response)}`);
                     }
                 } else if (operation === 'updateRecord') {
                     const recordId = this.getNodeParameter('recordId', itemIndex) as string;
-                    const fieldsJson = this.getNodeParameter('fields', itemIndex) as string;
-                    let fields: object;
+                    const fields = this.getNodeParameter('fields', itemIndex) as string;
 
+                    let fieldsObj;
                     try {
-                        fields = JSON.parse(fieldsJson);
-                    } catch (e: any) {
-                        throw new Error(`Invalid JSON for "Fields": ${e.message}. Please ensure it is a valid JSON object.`);
+                        fieldsObj = JSON.parse(fields);
+
+                        if (!fieldsObj.fields && typeof fieldsObj === 'object') {
+                            fieldsObj = { fields: fieldsObj };
+                        }
+
+                        if (!fieldsObj.fields || typeof fieldsObj.fields !== 'object') {
+                            throw new Error('Invalid fields structure');
+                        }
+                    } catch (error) {
+                        throw new Error(`Invalid fields format: ${error.message}`);
                     }
 
                     const response = await this.helpers.httpRequest({
-                        method: 'POST',
+                        method: 'PUT',
                         url: `https://open.larksuite.com/open-apis/bitable/v1/apps/${credentials.app_token}/tables/${credentials.table_id}/records/${recordId}`,
-                        body: {
-                            fields: fields,
-                        },
+                        body: fieldsObj,
                         json: true,
                         headers: {
                             'Authorization': `Bearer ${tenantAccessToken}`,
@@ -194,26 +201,42 @@ export class LarkBase implements INodeType {
                     if (response.code === 0 && response.data) {
                         responseData = response.data;
                     } else {
-                        throw new Error(`Failed to update record: ${response.msg || 'Unknown error'}`);
+                        throw new Error(`Failed to update record: ${response.msg || 'Unknown error'}. Code: ${response.code}`);
                     }
                 } else if (operation === 'deleteRecord') {
                     const recordId = this.getNodeParameter('recordId', itemIndex) as string;
 
-                    const response = await this.helpers.httpRequest({
-                        method: 'DELETE',
-                        url: `https://open.larksuite.com/open-apis/bitable/v1/apps/${credentials.app_token}/tables/${credentials.table_id}/records/${recordId}`,
-                        json: true,
-                        headers: {
-                            'Authorization': `Bearer ${tenantAccessToken}`,
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                        },
-                    });
+                    if (!recordId || typeof recordId !== 'string' || recordId.trim() === '') {
+                        throw new Error('Record ID must be a non-empty string');
+                    }
 
-                    if (response.code === 0) {
-                        responseData = response.data || { success: true, recordId: recordId, message: response.msg};
-                    } else {
-                        throw new Error(`Failed to delete record: ${response.msg || 'Unknown error'}`);
+                    try {
+                        const response = await this.helpers.httpRequest({
+                            method: 'DELETE',
+                            url: `https://open.larksuite.com/open-apis/bitable/v1/apps/${credentials.app_token}/tables/${credentials.table_id}/records/${recordId}`,
+                            json: true,
+                            headers: {
+                                'Authorization': `Bearer ${tenantAccessToken}`,
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                            },
+                        });
+
+                        if (response.code === 0) {
+                            responseData = {
+                                success: true,
+                                recordId: recordId,
+                                message: response.msg || 'Record deleted successfully',
+                                deletedAt: new Date().toISOString()
+                            };
+                        } else {
+                            throw new Error(`Lark API Error [${response.code}]: ${response.msg}`);
+                        }
+                    } catch (error) {
+                        if (error.response?.status === 404) {
+                            throw new Error(`Record not found (ID: ${recordId})`);
+                        }
+                        throw new Error(`Failed to delete record: ${error.message}`);
                     }
                 }
             } catch (error: any) {
