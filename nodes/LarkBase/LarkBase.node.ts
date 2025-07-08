@@ -43,6 +43,11 @@ export class LarkBase implements INodeType {
                         action: 'Create a new record in a Lark Base table',
                     },
                     {
+                        name: 'Add Records',
+                        value: 'addRecords',
+                        action: 'Add multiple records to a Lark Base table in batch',
+                    },
+                    {
                         name: 'Update Record',
                         value: 'updateRecord',
                         action: 'Update an existing record in a Lark Base table',
@@ -77,6 +82,19 @@ export class LarkBase implements INodeType {
                 displayOptions: {
                     show: {
                         operation: ['createRecord', 'updateRecord'],
+                    },
+                },
+            },
+            {
+                displayName: 'Records (JSON Array)',
+                name: 'records',
+                type: 'json',
+                default: '[]',
+                required: true,
+                description: 'JSON array of records to add in batch. Each record should be an object with "fields" property. Example: [{"fields": {"Name": "John"}}, {"fields": {"Name": "Jane"}}]',
+                displayOptions: {
+                    show: {
+                        operation: ['addRecords'],
                     },
                 },
             },
@@ -166,6 +184,42 @@ export class LarkBase implements INodeType {
                         responseData = response.data;
                     } else {
                         throw new Error(`Failed to create record: ${response.msg || 'Unknown error'}. Details: ${JSON.stringify(response)}`);
+                    }
+                } else if (operation === 'addRecords') {
+                    const recordsJson = this.getNodeParameter('records', itemIndex) as string;
+
+                    let records;
+                    try {
+                        records = JSON.parse(recordsJson);
+                        if (!Array.isArray(records)) {
+                            throw new Error('Records must be a JSON array');
+                        }
+                    } catch (error) {
+                        throw new Error(`Invalid records format: ${error.message}`);
+                    }
+
+                    const response = await this.helpers.httpRequest({
+                        method: 'POST',
+                        url: `https://open.larksuite.com/open-apis/bitable/v1/apps/${credentials.app_token}/tables/${credentials.table_id}/records/batch_create`,
+                        body: {
+                            records: records,
+                        },
+                        json: true,
+                        headers: {
+                            'Authorization': `Bearer ${tenantAccessToken}`,
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                        },
+                    });
+
+                    if (response.code === 0 && response.data) {
+                        responseData = {
+                            success: true,
+                            totalRecords: records.length,
+                            records: response.data.records || [],
+                        };
+                    } else {
+                        throw new Error(`Failed to add records: ${response.msg || 'Unknown error'}. Code: ${response.code}`);
                     }
                 } else if (operation === 'updateRecord') {
                     const recordId = this.getNodeParameter('recordId', itemIndex) as string;
